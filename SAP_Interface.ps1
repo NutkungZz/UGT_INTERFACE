@@ -260,7 +260,8 @@ ORDER BY
     $ftpUploadUrl = "ftp://$ftpServer$ftpPath$outputFileName"
     Upload-FileToFtp -LocalPath $outputFilePath -RemoteUrl $ftpUploadUrl
     
-    $ftpUploadUrlOK = "ftp://$ftpServer$ftpPath$outputFileName.OK"
+    $ftpOkFileName = "$baseFileName.OK"
+    $ftpUploadUrlOK = "ftp://$ftpServer$ftpPath$ftpOkFileName"
     Upload-FileToFtp -LocalPath $okFilePath -RemoteUrl $ftpUploadUrlOK
     
     # Update database records to mark as sent
