@@ -1,42 +1,62 @@
-# SAP_Interface.ps1 - Script for SAP data integration
-# ----------------------------------------------------
+# SAP_Interface.ps1 - Script for SAP data integration with enhanced path handling
+# -----------------------------------------------------------------------------
 
 # Set error behavior
 $ErrorActionPreference = "Stop"
 
+# Ensure required .NET types are available
+Add-Type -AssemblyName System.IO
+Add-Type -AssemblyName System.Data
+
+# Get script location for relative paths
+$scriptLocation = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+
 # Load configuration from file
-$configPath = "$PSScriptRoot\SAP_Interface_Config.ini"
-if (-not (Test-Path -Path $configPath)) {
-    Write-Host "Configuration file not found: $configPath"
+$configFileName = "SAP_Interface_Config.ini"
+$configPath = [System.IO.Path]::Combine($scriptLocation, $configFileName)
+
+if (-not [System.IO.File]::Exists($configPath)) {
+    Write-Host "Configuration file not found: $configPath" -ForegroundColor Red
     exit 1
 }
 
+# Parse configuration safely
 $config = @{}
-Get-Content $configPath | ForEach-Object {
-    if ($_ -match '^\s*([^#]\S+)\s*=\s*(.+)') {
-        $config[$matches[1].Trim()] = $matches[2].Trim()
+foreach ($line in [System.IO.File]::ReadAllLines($configPath)) {
+    $line = $line.Trim()
+    if ($line -and -not $line.StartsWith('#')) {
+        $parts = $line -split '=', 2
+        if ($parts.Count -eq 2) {
+            $key = $parts[0].Trim()
+            $value = $parts[1].Trim()
+            # Remove quotes if present
+            if ($value.StartsWith('"') -and $value.EndsWith('"')) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+            $config[$key] = $value
+        }
     }
 }
 
 # Set configuration variables
-$sqlServer = $config.SqlServer
-$database = $config.Database
-$sqlUser = $config.SqlUser
-$sqlPassword = $config.SqlPassword
-$ftpServer = $config.FtpServer
-$ftpPath = $config.FtpPath
-$ftpUser = $config.FtpUser
-$ftpPassword = $config.FtpPassword
-$interfacePrefix = $config.InterfacePrefix
+$sqlServer = $config["SqlServer"]
+$database = $config["Database"]
+$sqlUser = $config["SqlUser"]
+$sqlPassword = $config["SqlPassword"]
+$ftpServer = $config["FtpServer"]
+$ftpPath = $config["FtpPath"]
+$ftpUser = $config["FtpUser"]
+$ftpPassword = $config["FtpPassword"]
+$interfacePrefix = if ($config.ContainsKey("InterfacePrefix")) { $config["InterfacePrefix"] } else { "ZCSE086_OPERAND2" }
 
-# Define directory paths relative to script location
-$outputFolder = Join-Path -Path $PSScriptRoot -ChildPath "Files"
-$logPath = Join-Path -Path $PSScriptRoot -ChildPath "Logs"
+# Define directory paths using .NET methods
+$filesDir = [System.IO.Path]::Combine($scriptLocation, "Files")
+$logsDir = [System.IO.Path]::Combine($scriptLocation, "Logs")
 
 # Create timestamp for file naming
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
 $logFileName = "SAP_Interface_Log_$timestamp.txt"
-$logFile = Join-Path -Path $logPath -ChildPath $logFileName
+$logFile = [System.IO.Path]::Combine($logsDir, $logFileName)
 
 # Set up logging function
 function Write-Log {
@@ -51,7 +71,7 @@ function Write-Log {
     
     $logEntry = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - [$LogLevel] - $Message"
     
-    # Output to console
+    # Output to console with appropriate color
     if ($LogLevel -eq "ERROR") {
         Write-Host $logEntry -ForegroundColor Red
     } elseif ($LogLevel -eq "WARNING") {
@@ -60,13 +80,13 @@ function Write-Log {
         Write-Host $logEntry
     }
     
-    # Write to log file if available
-    if ($script:logFile) {
-        try {
-            Add-Content -Path $script:logFile -Value $logEntry -ErrorAction SilentlyContinue
-        } catch {
-            # Fail silently if unable to write to log
+    # Write to log file if possible
+    try {
+        if (-not [string]::IsNullOrEmpty($script:logFile) -and [System.IO.Directory]::Exists([System.IO.Path]::GetDirectoryName($script:logFile))) {
+            [System.IO.File]::AppendAllText($script:logFile, $logEntry + [Environment]::NewLine)
         }
+    } catch {
+        # Silent fail on logging errors
     }
 }
 
@@ -76,9 +96,9 @@ try {
     
     # Create output directory if it doesn't exist
     try {
-        if (!(Test-Path -LiteralPath $outputFolder)) {
-            New-Item -Path $outputFolder -ItemType Directory -Force | Out-Null
-            Write-Log "Created output directory: $outputFolder"
+        if (-not [System.IO.Directory]::Exists($filesDir)) {
+            [System.IO.Directory]::CreateDirectory($filesDir)
+            Write-Log "Created output directory: $filesDir"
         }
     } catch {
         Write-Log "ERROR: Failed to create output directory: $_" -LogLevel "ERROR"
@@ -87,19 +107,19 @@ try {
     
     # Create log directory if it doesn't exist
     try {
-        if (!(Test-Path -LiteralPath $logPath)) {
-            New-Item -Path $logPath -ItemType Directory -Force | Out-Null
-            Write-Log "Created log directory: $logPath"
+        if (-not [System.IO.Directory]::Exists($logsDir)) {
+            [System.IO.Directory]::CreateDirectory($logsDir)
+            Write-Log "Created log directory: $logsDir"
         }
     } catch {
         Write-Log "ERROR: Failed to create log directory: $_" -LogLevel "ERROR"
         throw
     }
     
-    # Set up file names
-    $outputFileName = "${interfacePrefix}_${timestamp}_0001.txt"
-    $outputFilePath = Join-Path -Path $outputFolder -ChildPath $outputFileName
-    $okFilePath = "$outputFilePath.OK"
+    # Set up file names using .NET path methods
+    $outputFileName = "$interfacePrefix`_$timestamp`_0001.txt"
+    $outputFilePath = [System.IO.Path]::Combine($filesDir, $outputFileName)
+    $okFilePath = [System.IO.Path]::Combine($filesDir, "$outputFileName.OK")
     
     Write-Log "Output file will be: $outputFileName"
     
@@ -139,8 +159,7 @@ ORDER BY
 "@
     
     # Execute query
-    $command = $connection.CreateCommand()
-    $command.CommandText = $query
+    $command = New-Object System.Data.SqlClient.SqlCommand($query, $connection)
     $reader = $command.ExecuteReader()
     
     # Check if we have records to process
@@ -151,8 +170,9 @@ ORDER BY
         exit 0
     }
     
-    # Create the interface file
-    $streamWriter = New-Object System.IO.StreamWriter($outputFilePath, $false, [System.Text.Encoding]::UTF8)
+    # Create the interface file using .NET methods
+    $fileStream = New-Object System.IO.FileStream($outputFilePath, [System.IO.FileMode]::Create)
+    $streamWriter = New-Object System.IO.StreamWriter($fileStream, [System.Text.Encoding]::UTF8)
     $recordCount = 0
     
     # Process the records
@@ -175,23 +195,26 @@ ORDER BY
         $streamWriter.WriteLine($line)
     }
     
+    # Close file handles properly
+    $streamWriter.Flush()
     $streamWriter.Close()
+    $fileStream.Close()
     $reader.Close()
     
     Write-Log "Generated interface file with $recordCount records"
     
     # Validate the generated file
-    if (!(Test-Path -LiteralPath $outputFilePath)) {
+    if (-not [System.IO.File]::Exists($outputFilePath)) {
         throw "Output file was not created: $outputFilePath"
     }
     
-    $fileSize = (Get-Item -LiteralPath $outputFilePath).Length
+    $fileSize = (New-Object System.IO.FileInfo($outputFilePath)).Length
     if ($fileSize -eq 0) {
         throw "Output file is empty: $outputFilePath"
     }
     
-    # Create the OK file
-    New-Item -Path $okFilePath -ItemType File -Force | Out-Null
+    # Create the OK file using .NET methods
+    [System.IO.File]::WriteAllText($okFilePath, "")
     Write-Log "Created OK marker file"
     
     # Upload files to FTP
@@ -250,8 +273,7 @@ WHERE
     [INTERFACE_STATUS] = 'PENDING'
 "@
     
-    $updateCommand = $connection.CreateCommand()
-    $updateCommand.CommandText = $updateQuery
+    $updateCommand = New-Object System.Data.SqlClient.SqlCommand($updateQuery, $connection)
     $updateCommand.Parameters.AddWithValue("@fileName", $outputFileName) | Out-Null
     $recordsUpdated = $updateCommand.ExecuteNonQuery()
     
@@ -260,24 +282,32 @@ WHERE
 } 
 catch {
     Write-Log "ERROR: Process failed: $($_.Exception.Message)" -LogLevel "ERROR"
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -LogLevel "ERROR"
+    if ($_.ScriptStackTrace) {
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -LogLevel "ERROR"
+    }
     
     # Exit with error
     exit 1
 }
 finally {
     # Clean up resources
-    if ($null -ne $streamWriter) {
-        $streamWriter.Dispose()
+    if ($null -ne $streamWriter -and $streamWriter -is [System.IDisposable]) {
+        try { $streamWriter.Dispose() } catch {}
+    }
+    
+    if ($null -ne $fileStream -and $fileStream -is [System.IDisposable]) {
+        try { $fileStream.Dispose() } catch {}
     }
     
     if ($null -ne $reader -and -not $reader.IsClosed) {
-        $reader.Close()
+        try { $reader.Close() } catch {}
     }
     
     if ($null -ne $connection -and $connection.State -eq 'Open') {
-        $connection.Close()
-        Write-Log "Database connection closed"
+        try { 
+            $connection.Close() 
+            Write-Log "Database connection closed"
+        } catch {}
     }
 }
 
