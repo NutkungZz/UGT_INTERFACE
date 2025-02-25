@@ -152,7 +152,15 @@ function Get-FtpDirectory {
         $ftpUrl = "ftp://$ftpServer$FtpPath"
         $request = [System.Net.FtpWebRequest]::Create($ftpUrl)
         $request.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectory
-        $request.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $ftpPassword)
+        
+        # Check if FTP credentials are provided
+        if ([string]::IsNullOrEmpty($ftpUser) -or [string]::IsNullOrEmpty($ftpPassword)) {
+            Write-Log "Using anonymous FTP login for directory listing" -LogLevel "INFO"
+            $request.Credentials = New-Object System.Net.NetworkCredential("anonymous", "anonymous@domain.com")
+        } else {
+            $request.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $ftpPassword)
+        }
+        
         $request.UsePassive = $true
         $request.UseBinary = $true
         $request.KeepAlive = $false
@@ -324,6 +332,53 @@ try {
         }
     }
     
+    # Check if Complete folder exists on FTP, if not create it
+    try {
+        $ftpUrl = "ftp://$ftpServer$ftpPath/Complete"
+        $request = [System.Net.FtpWebRequest]::Create($ftpUrl)
+        $request.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectory
+        
+        if ([string]::IsNullOrEmpty($ftpUser) -or [string]::IsNullOrEmpty($ftpPassword)) {
+            $request.Credentials = New-Object System.Net.NetworkCredential("anonymous", "anonymous@domain.com")
+        } else {
+            $request.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $ftpPassword)
+        }
+        
+        $request.UsePassive = $true
+        $request.UseBinary = $true
+        $request.KeepAlive = $false
+        
+        try {
+            $response = $request.GetResponse()
+            $response.Close()
+            Write-Log "Complete folder exists on FTP server"
+        } catch [System.Net.WebException] {
+            # Complete folder doesn't exist, create it
+            $makeDirectoryRequest = [System.Net.FtpWebRequest]::Create($ftpUrl)
+            $makeDirectoryRequest.Method = [System.Net.WebRequestMethods+Ftp]::MakeDirectory
+            
+            if ([string]::IsNullOrEmpty($ftpUser) -or [string]::IsNullOrEmpty($ftpPassword)) {
+                $makeDirectoryRequest.Credentials = New-Object System.Net.NetworkCredential("anonymous", "anonymous@domain.com")
+            } else {
+                $makeDirectoryRequest.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $ftpPassword)
+            }
+            
+            $makeDirectoryRequest.UsePassive = $true
+            $makeDirectoryRequest.KeepAlive = $false
+            
+            try {
+                $makeDirResponse = $makeDirectoryRequest.GetResponse()
+                $makeDirResponse.Close()
+                Write-Log "Created Complete folder on FTP server"
+            } catch {
+                Write-Log "WARNING: Could not create Complete folder on FTP server: $_" -LogLevel "WARNING"
+                Write-Log "Files will be processed but not moved on the FTP server" -LogLevel "WARNING"
+            }
+        }
+    } catch {
+        Write-Log "WARNING: Error checking/creating Complete folder on FTP: $_" -LogLevel "WARNING"
+    }
+    
     # Connect to database
     # Check if SQL credentials are provided, otherwise use Windows Authentication
     if ([string]::IsNullOrEmpty($sqlUser) -or [string]::IsNullOrEmpty($sqlPassword)) {
@@ -379,11 +434,41 @@ try {
         
         Write-Log "Successfully processed $recordCount records from file $dataFile"
         
-        # Move to archive
+        # Move local file to archive
         [System.IO.File]::Copy($localFilePath, $archiveFilePath, $true)
         [System.IO.File]::Delete($localFilePath)
         
-        Write-Log "File moved to archive"
+        # Move file on FTP server to Complete folder
+        try {
+            Write-Log "Moving file on FTP server to Complete folder..."
+            
+            # Create FTP rename request (move to Complete folder)
+            $sourcePath = "$ftpPath$dataFile"
+            $destinationPath = "$ftpPath/Complete/$dataFile"
+            
+            $renameRequest = [System.Net.FtpWebRequest]::Create("ftp://$ftpServer$sourcePath")
+            $renameRequest.Method = [System.Net.WebRequestMethods+Ftp]::Rename
+            $renameRequest.RenameTo = "Complete/$dataFile"
+            
+            if ([string]::IsNullOrEmpty($ftpUser) -or [string]::IsNullOrEmpty($ftpPassword)) {
+                $renameRequest.Credentials = New-Object System.Net.NetworkCredential("anonymous", "anonymous@domain.com")
+            } else {
+                $renameRequest.Credentials = New-Object System.Net.NetworkCredential($ftpUser, $ftpPassword)
+            }
+            
+            $renameRequest.UsePassive = $true
+            $renameRequest.KeepAlive = $false
+            
+            $response = $renameRequest.GetResponse()
+            $response.Close()
+            
+            Write-Log "File successfully moved to Complete folder on FTP server"
+        } catch {
+            Write-Log "WARNING: Could not move file on FTP server. Error: $_" -LogLevel "WARNING"
+            Write-Log "Processing will continue as the file was successfully imported." -LogLevel "WARNING"
+        }
+        
+        Write-Log "File processing and archiving completed"
     }
     
     Write-Log "ZDMI027 import process completed successfully"
