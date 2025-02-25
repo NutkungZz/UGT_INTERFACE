@@ -117,9 +117,10 @@ try {
     }
     
     # Set up file names using .NET path methods
-    $outputFileName = "$interfacePrefix`_$timestamp`_0001.txt"
+    $baseFileName = "$interfacePrefix`_$timestamp`_0001"
+    $outputFileName = "$baseFileName.txt"
     $outputFilePath = [System.IO.Path]::Combine($filesDir, $outputFileName)
-    $okFilePath = [System.IO.Path]::Combine($filesDir, "$outputFileName.OK")
+    $okFilePath = [System.IO.Path]::Combine($filesDir, "$baseFileName.OK")
     
     Write-Log "Output file will be: $outputFileName"
     
