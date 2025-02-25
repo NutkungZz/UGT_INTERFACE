@@ -44,8 +44,8 @@ $ftpUser = $config.FtpUser
 $ftpPassword = $config.FtpPassword
 $logPath = $config.LogPath
 $interfacePrefix = $config.InterfacePrefix
-$maxRetries = if ($config.MaxRetries) { [int]$config.MaxRetries } else { 3 }
-$retryWaitSeconds = if ($config.RetryWaitSeconds) { [int]$config.RetryWaitSeconds } else { 5 }
+$maxRetries = if ($config.ContainsKey("MaxRetries")) { [int]$config.MaxRetries } else { 3 }
+$retryWaitSeconds = if ($config.ContainsKey("RetryWaitSeconds")) { [int]$config.RetryWaitSeconds } else { 5 }
 #endregion
 
 #region Function Definitions
