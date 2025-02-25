@@ -117,7 +117,7 @@ function Convert-SapDateToSql {
             throw "Invalid date format: $SapDate"
         }
     } catch {
-        Write-Log "ERROR: Failed to convert date: $SapDate - $_" -LogLevel "ERROR"
+        Write-Log ("ERROR: Failed to convert date: " + $SapDate + " - " + ${_}) -LogLevel "ERROR"
         throw
     }
 }
@@ -137,7 +137,7 @@ function Test-FileProcessed {
         
         return ($count -gt 0)
     } catch {
-        Write-Log "ERROR: Failed to check if file was processed: $_" -LogLevel "ERROR"
+        Write-Log ("ERROR: Failed to check if file was processed: " + ${_}) -LogLevel "ERROR"
         throw
     }
 }
@@ -176,7 +176,7 @@ function Get-FtpDirectory {
         
         return $fileList
     } catch {
-        Write-Log "ERROR: Failed to list FTP directory: $_" -LogLevel "ERROR"
+        Write-Log ("ERROR: Failed to list FTP directory: " + ${_}) -LogLevel "ERROR"
         throw
     }
 }
@@ -238,10 +238,10 @@ function Get-FtpFile {
             break
         } catch {
             if ($attempt -ge $maxRetryAttempts) {
-                Write-Log "ERROR: Failed to download file $RemoteFile after $maxRetryAttempts attempts: $_" -LogLevel "ERROR"
+                Write-Log ("ERROR: Failed to download file " + $RemoteFile + " after " + $maxRetryAttempts + " attempts: " + ${_}) -LogLevel "ERROR"
                 throw
             } else {
-                Write-Log "WARNING: Download attempt $attempt failed. Retrying in $waitSeconds seconds..." -LogLevel "WARNING"
+                Write-Log ("WARNING: Download attempt " + $attempt + " failed. Retrying in " + $waitSeconds + " seconds...") -LogLevel "WARNING"
                 Start-Sleep -Seconds $waitSeconds
             }
         }
@@ -315,7 +315,7 @@ VALUES
             try { $transaction.Rollback() } catch {}
         }
         
-        Write-Log "ERROR: Failed to process file $FileName: $_" -LogLevel "ERROR"
+        Write-Log ("ERROR: Failed to process file " + $FileName + ": " + ${_}) -LogLevel "ERROR"
         throw
     }
 }
@@ -371,12 +371,12 @@ try {
                 $makeDirResponse.Close()
                 Write-Log "Created Complete folder on FTP server"
             } catch {
-                Write-Log "WARNING: Could not create Complete folder on FTP server: $_" -LogLevel "WARNING"
+                Write-Log ("WARNING: Could not create Complete folder on FTP server: " + ${_}) -LogLevel "WARNING"
                 Write-Log "Files will be processed but not moved on the FTP server" -LogLevel "WARNING"
             }
         }
     } catch {
-        Write-Log "WARNING: Error checking/creating Complete folder on FTP: $_" -LogLevel "WARNING"
+        Write-Log ("WARNING: Error checking/creating Complete folder on FTP: " + ${_}) -LogLevel "WARNING"
     }
     
     # Connect to database
@@ -464,7 +464,7 @@ try {
             
             Write-Log "File successfully moved to Complete folder on FTP server"
         } catch {
-            Write-Log "WARNING: Could not move file on FTP server. Error: $_" -LogLevel "WARNING"
+            Write-Log ("WARNING: Could not move file on FTP server. Error: " + ${_}) -LogLevel "WARNING"
             Write-Log "Processing will continue as the file was successfully imported." -LogLevel "WARNING"
         }
         
@@ -474,9 +474,9 @@ try {
     Write-Log "ZDMI027 import process completed successfully"
 }
 catch {
-    Write-Log "ERROR: Process failed: $($_.Exception.Message)" -LogLevel "ERROR"
+    Write-Log ("ERROR: Process failed: " + ${_}) -LogLevel "ERROR"
     if ($_.ScriptStackTrace) {
-        Write-Log "Stack trace: $($_.ScriptStackTrace)" -LogLevel "ERROR"
+        Write-Log ("Stack trace: " + $_.ScriptStackTrace) -LogLevel "ERROR"
     }
     
     # Exit with error
